@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "red-roving-rascal"
-version = "0.1.3"
+version = "0.1.4"
 description = "A lightweight API testing and evaluation toolkit"
 readme = "README.md"
 license = "Apache-2.0"
