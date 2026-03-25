@@ -153,7 +153,7 @@ class RascalBackendConstruct(Construct):
 
         api.root.add_resource("health").add_method(
             "GET", nlb_integration("GET", "/health"),
-            options=apigw.MethodOptions(authorization_type=apigw.AuthorizationType.NONE),
+            authorization_type=apigw.AuthorizationType.NONE,
         )
 
         self.api_endpoint = api.url
