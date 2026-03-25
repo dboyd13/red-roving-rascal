@@ -1,0 +1,31 @@
+{
+  "name": "rascal-cdk",
+  "version": "0.1.0",
+  "description": "CDK construct for deploying a rascal backend (API GW + ECS Fargate + DynamoDB)",
+  "license": "Apache-2.0",
+  "main": "dist/src/rascal-construct.js",
+  "types": "dist/src/rascal-construct.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dboyd13/red-roving-rascal.git",
+    "directory": "cdk"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "cdk": "cdk"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.150.0",
+    "constructs": "^10.0.0"
+  },
+  "peerDependencies": {
+    "aws-cdk-lib": "^2.150.0",
+    "constructs": "^10.0.0"
+  },
+  "devDependencies": {
+    "aws-cdk": "^2.150.0",
+    "@types/node": "*",
+    "typescript": "^5.4.5"
+  }
+}

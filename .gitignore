@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.venv/
+
+# CDK / TypeScript
+cdk/node_modules/
+cdk/dist/
+cdk/cdk.out/
+cdk/package-lock.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
