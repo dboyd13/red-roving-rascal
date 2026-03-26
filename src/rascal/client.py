@@ -1,11 +1,22 @@
 """Client for the rascal API."""
 from __future__ import annotations
 
+import time
 from typing import Callable
 
 import httpx
 
-from rascal.models import JobRequest, JobResponse
+from rascal.models import (
+    EvaluateRequest,
+    EvaluateResponse,
+    EvaluationStatus,
+    InputOutputPair,
+    JobRequest,
+    JobResponse,
+    ScoringConfig,
+    ScoringResult,
+    TestSuite,
+)
 from rascal.auth import sigv4_headers
 
 
@@ -89,6 +100,62 @@ class RascalClient:
         """Check backend health."""
         url = f"{self.endpoint}/health"
         with httpx.Client(timeout=self.timeout) as http:
-            resp = http.get(url)
+            resp = http.get(url, headers=self._headers("GET", url))
             resp.raise_for_status()
             return resp.json()
+
+    def get_suites(self) -> list[str]:
+        """GET /suites → list of suite ID strings."""
+        url = f"{self.endpoint}/suites"
+        with httpx.Client(timeout=self.timeout) as http:
+            resp = http.get(url, headers=self._headers("GET", url))
+            resp.raise_for_status()
+            return resp.json()
+
+    def get_suite(self, suite_id: str) -> TestSuite:
+        """GET /suites/{suite_id} → TestSuite object."""
+        url = f"{self.endpoint}/suites/{suite_id}"
+        with httpx.Client(timeout=self.timeout) as http:
+            resp = http.get(url, headers=self._headers("GET", url))
+            resp.raise_for_status()
+            return TestSuite.model_validate_json(resp.content)
+
+    def evaluate(self, pairs: list[InputOutputPair], config: ScoringConfig) -> EvaluateResponse:
+        """POST /evaluate → submit async evaluation, return EvaluateResponse with status=pending."""
+        request = EvaluateRequest(pairs=pairs, config=config)
+        url = f"{self.endpoint}/evaluate"
+        body = request.model_dump_json().encode()
+        with httpx.Client(timeout=self.timeout) as http:
+            resp = http.post(url, content=body, headers=self._headers("POST", url, body))
+            resp.raise_for_status()
+            return EvaluateResponse.model_validate_json(resp.content)
+
+    def get_evaluation(self, evaluation_id: str) -> EvaluateResponse:
+        """GET /evaluate/{evaluation_id} → poll for evaluation status/result."""
+        url = f"{self.endpoint}/evaluate/{evaluation_id}"
+        with httpx.Client(timeout=self.timeout) as http:
+            resp = http.get(url, headers=self._headers("GET", url))
+            resp.raise_for_status()
+            return EvaluateResponse.model_validate_json(resp.content)
+
+    def evaluate_and_wait(
+        self,
+        pairs: list[InputOutputPair],
+        config: ScoringConfig,
+        poll_interval: float = 2.0,
+        timeout: float = 300.0,
+    ) -> EvaluateResponse:
+        """Submit an evaluation and poll until complete or failed.
+
+        Raises TimeoutError if the evaluation does not complete within timeout seconds.
+        """
+        response = self.evaluate(pairs, config)
+        deadline = time.monotonic() + timeout
+        while response.status not in (EvaluationStatus.COMPLETE, EvaluationStatus.FAILED):
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"Evaluation {response.evaluation_id} did not complete within {timeout}s"
+                )
+            time.sleep(poll_interval)
+            response = self.get_evaluation(response.evaluation_id)
+        return response

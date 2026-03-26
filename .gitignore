@@ -5,8 +5,12 @@ __pycache__/
 dist/
 build/
 .venv/
+.hypothesis/
+.pytest_cache/
 
-# CDK / TypeScript
+# CDK
+cdk.out/
+cdk.context.json
 cdk/node_modules/
 cdk/dist/
 cdk/cdk.out/
@@ -17,3 +21,6 @@ cdk/package-lock.json
 .vscode/
 *.swp
 .DS_Store
+
+# Kiro
+.kiro/

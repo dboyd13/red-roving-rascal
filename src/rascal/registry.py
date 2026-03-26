@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable, Any
 
+from rascal.models import AnalysisResult, Verdict, TestSuite
+
 
 @runtime_checkable
 class Checker(Protocol):
@@ -38,6 +40,25 @@ class Scorer(Protocol):
 class AuthProvider(Protocol):
     """Signs outbound HTTP requests."""
     def sign(self, method: str, url: str, body: bytes = b"") -> dict[str, str]: ...
+
+
+@runtime_checkable
+class Analyzer(Protocol):
+    """Inspects an input/output pair and produces a raw AnalysisResult."""
+    def analyze(self, input_text: str, output_text: str) -> AnalysisResult: ...
+
+
+@runtime_checkable
+class Judge(Protocol):
+    """Evaluates an AnalysisResult and produces a Verdict."""
+    def judge(self, result: AnalysisResult) -> Verdict: ...
+
+
+@runtime_checkable
+class SuiteStore(Protocol):
+    """Stores and retrieves test suites."""
+    def get_suite(self, suite_id: str) -> TestSuite: ...
+    def list_suites(self) -> list[str]: ...
 
 
 class _NotFoundError(Exception):

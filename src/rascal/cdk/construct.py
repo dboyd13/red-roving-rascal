@@ -32,7 +32,7 @@ class RascalBackendConstruct(Construct):
         vpc: ec2.IVpc | None = None,
         allowed_account_ids: list[str] | None = None,
         principal_org_id: str | None = None,
-        container_image: ecs.ContainerImage | None = None,
+        container_image: ecs.ContainerImage,
         task_cpu: int = 1024,
         task_memory_mib: int = 2048,
         desired_count: int = 1,
@@ -59,7 +59,9 @@ class RascalBackendConstruct(Construct):
             sort_key=dynamodb.Attribute(name="sk", type=dynamodb.AttributeType.STRING),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             removal_policy=removal_policy,
-            point_in_time_recovery=True,
+            point_in_time_recovery_specification=dynamodb.PointInTimeRecoverySpecification(
+                point_in_time_recovery_enabled=True,
+            ),
         )
         self.jobs_table = dynamodb.Table(
             self, "JobsTable",
@@ -67,6 +69,15 @@ class RascalBackendConstruct(Construct):
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             removal_policy=removal_policy,
             time_to_live_attribute="ttl",
+        )
+        self.suites_table = dynamodb.Table(
+            self, "SuitesTable",
+            partition_key=dynamodb.Attribute(name="suiteId", type=dynamodb.AttributeType.STRING),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=removal_policy,
+            point_in_time_recovery_specification=dynamodb.PointInTimeRecoverySpecification(
+                point_in_time_recovery_enabled=True,
+            ),
         )
 
         # ECS
@@ -78,11 +89,12 @@ class RascalBackendConstruct(Construct):
 
         task_def.add_container(
             "App",
-            image=container_image or ecs.ContainerImage.from_registry("amazon/amazon-ecs-sample"),
+            image=container_image,
             port_mappings=[ecs.PortMapping(container_port=container_port)],
             environment={
                 "DATA_TABLE": self.data_table.table_name,
                 "JOBS_TABLE": self.jobs_table.table_name,
+                "SUITES_TABLE": self.suites_table.table_name,
                 "PORT": str(container_port),
             },
             logging=ecs.LogDrivers.aws_logs(stream_prefix="rascal", log_group=log_group),
@@ -90,6 +102,13 @@ class RascalBackendConstruct(Construct):
 
         self.data_table.grant_read_write_data(task_def.task_role)
         self.jobs_table.grant_read_write_data(task_def.task_role)
+        self.suites_table.grant_read_write_data(task_def.task_role)
+
+        # Comprehend access for the default analyzer
+        task_def.task_role.add_to_policy(iam.PolicyStatement(
+            actions=["comprehend:DetectEntities", "comprehend:DetectPiiEntities"],
+            resources=["*"],
+        ))
 
         sg = ec2.SecurityGroup(self, "Sg", vpc=self._vpc, description="Backend ECS service", allow_all_outbound=True)
 
@@ -156,6 +175,44 @@ class RascalBackendConstruct(Construct):
             authorization_type=apigw.AuthorizationType.NONE,
         )
 
+        evaluate_resource = api.root.add_resource("evaluate")
+        evaluate_resource.add_method("POST", nlb_integration("POST", "/evaluate"))
+
+        evaluation_id_resource = evaluate_resource.add_resource("{evaluation_id}")
+        evaluation_id_resource.add_method(
+            "GET",
+            apigw.Integration(
+                type=apigw.IntegrationType.HTTP_PROXY,
+                integration_http_method="GET",
+                uri=f"http://{nlb.load_balancer_dns_name}/evaluate/{{evaluation_id}}",
+                options=apigw.IntegrationOptions(
+                    connection_type=apigw.ConnectionType.VPC_LINK,
+                    vpc_link=vpc_link,
+                    request_parameters={
+                        "integration.request.path.evaluation_id": "method.request.path.evaluation_id"
+                    },
+                ),
+            ),
+            request_parameters={"method.request.path.evaluation_id": True},
+        )
+
+        suites_resource = api.root.add_resource("suites")
+        suites_resource.add_method("GET", nlb_integration("GET", "/suites"))
+
+        suite_id = suites_resource.add_resource("{suite_id}")
+        suite_id.add_method(
+            "GET",
+            apigw.Integration(
+                type=apigw.IntegrationType.HTTP_PROXY, integration_http_method="GET",
+                uri=f"http://{nlb.load_balancer_dns_name}/suites/{{suite_id}}",
+                options=apigw.IntegrationOptions(
+                    connection_type=apigw.ConnectionType.VPC_LINK, vpc_link=vpc_link,
+                    request_parameters={"integration.request.path.suite_id": "method.request.path.suite_id"},
+                ),
+            ),
+            request_parameters={"method.request.path.suite_id": True},
+        )
+
         self.api_endpoint = api.url
 
         # Alarms
@@ -167,6 +224,7 @@ class RascalBackendConstruct(Construct):
         CfnOutput(self, "TaskRoleArn", value=task_def.task_role.role_arn)
         CfnOutput(self, "DataTableName", value=self.data_table.table_name)
         CfnOutput(self, "JobsTableName", value=self.jobs_table.table_name)
+        CfnOutput(self, "SuitesTableName", value=self.suites_table.table_name)
 
     @staticmethod
     def _build_resource_policy(
@@ -187,11 +245,6 @@ class RascalBackendConstruct(Construct):
                 effect=iam.Effect.ALLOW, principals=[iam.AnyPrincipal()],
                 actions=["execute-api:Invoke"], resources=["execute-api:/*"],
                 conditions={"StringEquals": conditions},
-            ))
-            statements.append(iam.PolicyStatement(
-                effect=iam.Effect.DENY, principals=[iam.AnyPrincipal()],
-                actions=["execute-api:Invoke"], resources=["execute-api:/*"],
-                conditions={"StringNotEquals": conditions},
             ))
         else:
             statements.append(iam.PolicyStatement(

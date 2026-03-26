@@ -18,7 +18,7 @@ class RascalStack(Stack):
         *,
         allowed_account_ids: list[str] | None = None,
         principal_org_id: str | None = None,
-        container_image: ecs.ContainerImage | None = None,
+        container_image: ecs.ContainerImage,
         **kwargs,
     ) -> None:
         super().__init__(scope, id, **kwargs)

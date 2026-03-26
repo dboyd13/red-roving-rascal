@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "red-roving-rascal"
-version = "0.1.5"
+version = "0.1.6"
 description = "A lightweight API testing and evaluation toolkit"
 readme = "README.md"
 license = "Apache-2.0"
@@ -32,6 +32,13 @@ cdk = [
 [project.urls]
 Homepage = "https://github.com/dboyd13/red-roving-rascal"
 Repository = "https://github.com/dboyd13/red-roving-rascal"
+
+[tool.pytest.ini_options]
+# Suppress PytestCollectionWarning for Pydantic models named TestCase/TestSuite
+# that get imported into test modules.
+filterwarnings = [
+    "ignore::pytest.PytestCollectionWarning:.*models.*",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/rascal"]
