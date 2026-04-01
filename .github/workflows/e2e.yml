@@ -42,10 +42,10 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.E2E_AWS_ROLE_ARN }}
-          aws-region: ${{ vars.E2E_AWS_REGION }}
+          aws-region: ${{ secrets.E2E_AWS_REGION }}
 
       - name: Run e2e tests
         env:
-          RASCAL_GATEWAY_URL: ${{ vars.E2E_GATEWAY_URL }}
-          AWS_REGION: ${{ vars.E2E_AWS_REGION }}
+          RASCAL_GATEWAY_URL: ${{ secrets.E2E_GATEWAY_URL }}
+          AWS_REGION: ${{ secrets.E2E_AWS_REGION }}
         run: python -m pytest tests/e2e/ -v -s
