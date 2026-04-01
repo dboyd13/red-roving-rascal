@@ -1,16 +1,4 @@
-"""Property 3: ThresholdJudge Direction Consistency.
-
-Feature: pluggable-analysis-pipeline, Property 3: ThresholdJudge Direction Consistency
-
-For any AnalysisResult with a raw_score, any threshold float, and any
-ThresholdDirection:
-- ABOVE → passed == (raw_score >= threshold)
-- BELOW → passed == (raw_score <= threshold)
-
-Verdict fields score, threshold, and analyzer_name are propagated correctly.
-
-Validates: Requirements 3.2, 3.3
-"""
+"""ThresholdJudge Direction Consistency."""
 from __future__ import annotations
 
 from hypothesis import given, settings
@@ -52,7 +40,7 @@ def test_threshold_judge_direction_consistency(
     threshold: float,
     direction: ThresholdDirection,
 ) -> None:
-    """**Validates: Requirements 3.2, 3.3**"""
+    
     judge = ThresholdJudge(threshold=threshold, direction=direction)
     verdict = judge.judge(result)
 

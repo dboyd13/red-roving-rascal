@@ -10,7 +10,7 @@ def _result(entities: list[str], name: str = "test") -> AnalysisResult:
     return AnalysisResult(analyzer_name=name, raw_score=0.0, entities=entities)
 
 
-# --- Constructor defaults (Req 6.1) ---
+# --- Constructor defaults ---
 
 
 class TestDefaults:
@@ -29,7 +29,7 @@ class TestDefaults:
         assert judge.threshold == 2.0
 
 
-# --- Weighted sum and pass/fail (Req 6.2, 6.3, 6.4) ---
+# --- Weighted sum and pass/fail ---
 
 
 class TestWeightedScoring:
@@ -52,7 +52,7 @@ class TestWeightedScoring:
         assert verdict.score == 1.0
 
 
-# --- Empty entities (Req 6.2) ---
+# --- Empty entities ---
 
 
 class TestEmptyEntities:
@@ -68,7 +68,7 @@ class TestEmptyEntities:
         assert verdict.violations == set()
 
 
-# --- Unknown entity types default to 0.0 (Req 6.6) ---
+# --- Unknown entity types default to 0.0 ---
 
 
 class TestUnknownEntities:
@@ -85,7 +85,7 @@ class TestUnknownEntities:
         assert verdict.passed is True
 
 
-# --- Violations (Req 6.5) ---
+# --- Violations ---
 
 
 class TestViolations:

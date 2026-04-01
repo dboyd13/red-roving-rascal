@@ -10,7 +10,7 @@ def _result(score: float, name: str = "test") -> AnalysisResult:
     return AnalysisResult(analyzer_name=name, raw_score=score)
 
 
-# --- Default parameters (Req 3.4) ---
+# --- Default parameters ---
 
 
 class TestDefaults:
@@ -23,7 +23,7 @@ class TestDefaults:
         assert judge.direction is ThresholdDirection.BELOW
 
 
-# --- ABOVE direction (Req 3.2) ---
+# --- ABOVE direction ---
 
 
 class TestAboveDirection:
@@ -43,7 +43,7 @@ class TestAboveDirection:
         assert verdict.passed is False
 
 
-# --- BELOW direction (Req 3.3) ---
+# --- BELOW direction ---
 
 
 class TestBelowDirection:

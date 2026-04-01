@@ -15,7 +15,7 @@ def _verdict(passed: bool, analyzer_name: str = "test") -> Verdict:
     )
 
 
-# --- Known verdict sets and expected pass rates (Req 5.1, 5.2) ---
+# --- Known verdict sets and expected pass rates ---
 
 
 class TestPassRateCalculation:
@@ -48,7 +48,7 @@ class TestPassRateCalculation:
         assert result.passed is False  # ~0.33 < 0.5
 
 
-# --- Multiple analyzers (Req 5.3, 5.4) ---
+# --- Multiple analyzers ---
 
 
 class TestMultipleAnalyzers:
@@ -77,7 +77,7 @@ class TestMultipleAnalyzers:
         assert result.per_analyzer["b"].pass_rate == 0.0
 
 
-# --- Empty verdicts list (Req 5.1) ---
+# --- Empty verdicts list ---
 
 
 class TestEmptyVerdicts:
@@ -93,7 +93,7 @@ class TestEmptyVerdicts:
         assert "No verdicts" in result.description
 
 
-# --- Missing thresholds default to 1.0 (Req 5.5) ---
+# --- Missing thresholds default to 1.0 ---
 
 
 class TestDefaultThreshold:
@@ -116,7 +116,7 @@ class TestDefaultThreshold:
         assert result.passed is False  # 0.5 < default 1.0
 
 
-# --- Description content (Req 5.6) ---
+# --- Description content ---
 
 
 class TestDescription:

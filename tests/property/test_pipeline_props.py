@@ -1,16 +1,4 @@
-"""Property 6: Pipeline End-to-End Orchestration.
-
-Feature: pluggable-analysis-pipeline, Property 6: Pipeline End-to-End Orchestration
-
-For any set of registered Analyzers (each returning a deterministic
-AnalysisResult) and their paired Judges, and any non-empty list of
-InputOutputPair objects, the Pipeline should produce a ScoringResult
-containing exactly len(pairs) * len(analyzers) verdicts passed to the
-Scorer, with each verdict's analyzer_name matching one of the registered
-analyzer names.
-
-Validates: Requirements 1.5, 9.1, 9.2, 9.3, 9.4
-"""
+"""Pipeline End-to-End Orchestration."""
 from __future__ import annotations
 
 from hypothesis import given, settings
@@ -126,7 +114,7 @@ def test_pipeline_end_to_end_orchestration(
     pairs: list[InputOutputPair],
     config: ScoringConfig,
 ) -> None:
-    """**Validates: Requirements 1.5, 9.1, 9.2, 9.3, 9.4**"""
+    
     # Clear registry for isolation
     Registry.clear()
 

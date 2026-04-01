@@ -1,15 +1,4 @@
-"""Property 4: WeightedEntityJudge Weighted Scoring.
-
-Feature: pluggable-analysis-pipeline, Property 4: WeightedEntityJudge Weighted Scoring
-
-For any AnalysisResult with a list of entities, any weights dict mapping
-entity types to floats, and any threshold float: the WeightedEntityJudge
-should set Verdict.passed to True iff the sum of weights.get(entity, 0.0)
-for all entities is <= threshold, and Verdict.violations should equal the
-set of entity types present that have a weight > 0.
-
-Validates: Requirements 6.2, 6.3, 6.4, 6.5
-"""
+"""WeightedEntityJudge Weighted Scoring."""
 from __future__ import annotations
 
 from hypothesis import given, settings
@@ -54,7 +43,7 @@ def test_weighted_entity_judge_scoring(
     weights: dict[str, float],
     threshold: float,
 ) -> None:
-    """**Validates: Requirements 6.2, 6.3, 6.4, 6.5**"""
+    
     judge = WeightedEntityJudge(weights=weights, threshold=threshold)
     verdict = judge.judge(result)
 

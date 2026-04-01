@@ -1,6 +1,5 @@
 """Unit tests for CDK construct updates — suites table, new routes, env vars, outputs.
 
-Validates: Requirements 8.7
 """
 from __future__ import annotations
 
@@ -44,8 +43,8 @@ class TestSuitesTable:
         )
 
     def test_suites_table_count(self, template: assertions.Template) -> None:
-        """Stack should have exactly three DynamoDB tables (data, jobs, suites)."""
-        template.resource_count_is("AWS::DynamoDB::Table", 3)
+        """Stack should have exactly two DynamoDB tables (evaluations, suites)."""
+        template.resource_count_is("AWS::DynamoDB::Table", 2)
 
 
 class TestContainerEnvironment:

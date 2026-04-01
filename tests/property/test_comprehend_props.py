@@ -1,13 +1,4 @@
-"""Property 10: ComprehendAnalyzer Max Confidence Score.
-
-Feature: pluggable-analysis-pipeline, Property 10: ComprehendAnalyzer Max Confidence Score
-
-For any list of detected entities with confidence scores, the
-ComprehendAnalyzer should set AnalysisResult.raw_score to the maximum
-confidence value among all entities, or 0.0 when the entity list is empty.
-
-Validates: Requirements 7.3
-"""
+"""ComprehendAnalyzer Max Confidence Score."""
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -41,7 +32,7 @@ st_empty_entity_list = st.just([])
 def test_raw_score_equals_max_confidence_when_entities_exist(
     entities: list[tuple[str, float]],
 ) -> None:
-    """**Validates: Requirements 7.3**"""
+    
     mock_response = {
         "Entities": [
             {"Type": etype, "Score": score} for etype, score in entities
@@ -66,7 +57,7 @@ def test_raw_score_equals_max_confidence_when_entities_exist(
 def test_raw_score_is_zero_when_no_entities(
     entities: list[tuple[str, float]],
 ) -> None:
-    """**Validates: Requirements 7.3**"""
+    
     mock_response: dict = {"Entities": []}
 
     with patch("rascal.analyzers.comprehend.boto3") as mock_boto3:

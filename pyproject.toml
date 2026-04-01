@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "red-roving-rascal"
-version = "0.2.0"
+version = "0.3.0"
 description = "A lightweight API testing and evaluation toolkit"
 readme = "README.md"
 license = "Apache-2.0"
@@ -38,6 +38,9 @@ Repository = "https://github.com/dboyd13/red-roving-rascal"
 # that get imported into test modules.
 filterwarnings = [
     "ignore::pytest.PytestCollectionWarning:.*models.*",
+]
+markers = [
+    "integration: end-to-end tests requiring a deployed AgentCore Gateway",
 ]
 
 [tool.hatch.build.targets.wheel]

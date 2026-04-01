@@ -20,7 +20,7 @@ from rascal.models import (
 )
 
 
-# --- ThresholdDirection enum (Req 3.1) ---
+# --- ThresholdDirection enum ---
 
 
 class TestThresholdDirection:
@@ -38,7 +38,7 @@ class TestThresholdDirection:
         assert set(ThresholdDirection) == {ThresholdDirection.ABOVE, ThresholdDirection.BELOW}
 
 
-# --- AnalysisResult (Req 13.1) ---
+# --- AnalysisResult ---
 
 
 class TestAnalysisResult:
@@ -71,7 +71,7 @@ class TestAnalysisResult:
         assert isinstance(r.raw_score, float)
 
 
-# --- Verdict (Req 13.2) ---
+# --- Verdict ---
 
 
 class TestVerdict:
@@ -107,7 +107,7 @@ class TestVerdict:
         assert v.violations == {"X", "Y"}
 
 
-# --- PerAnalyzerResult (Req 13.3) ---
+# --- PerAnalyzerResult ---
 
 
 class TestPerAnalyzerResult:
@@ -175,7 +175,7 @@ class TestScoringResult:
         assert r.description == "failed"
 
 
-# --- InputOutputPair (Req 13.4) ---
+# --- InputOutputPair ---
 
 
 class TestInputOutputPair:
@@ -258,7 +258,7 @@ class TestEvaluateRequest:
             EvaluateRequest()  # type: ignore[call-arg]
 
 
-# --- EvaluationStatus enum (Req 1.2) ---
+# --- EvaluationStatus enum ---
 
 
 class TestEvaluationStatus:
@@ -287,7 +287,7 @@ class TestEvaluationStatus:
         }
 
 
-# --- EvaluateResponse (Req 1.1) ---
+# --- EvaluateResponse ---
 
 
 class TestEvaluateResponse:

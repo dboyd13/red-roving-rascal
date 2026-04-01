@@ -1,6 +1,5 @@
 """Unit tests for ComprehendAnalyzer.
 
-Requirements: 7.1, 7.2, 7.3, 7.4, 7.5
 """
 from __future__ import annotations
 
@@ -13,7 +12,7 @@ from rascal.models import AnalysisResult
 
 
 # ---------------------------------------------------------------------------
-# Tests: entity detection with known input (Req 7.1, 7.2, 7.3, 7.4)
+# Tests: entity detection with known input
 # ---------------------------------------------------------------------------
 
 
@@ -55,7 +54,7 @@ class TestEntityDetection:
 
 
 # ---------------------------------------------------------------------------
-# Tests: empty entity response (Req 7.3)
+# Tests: empty entity response
 # ---------------------------------------------------------------------------
 
 
@@ -77,7 +76,7 @@ class TestEmptyEntities:
 
 
 # ---------------------------------------------------------------------------
-# Tests: API failure handling (Req 7.5)
+# Tests: API failure handling
 # ---------------------------------------------------------------------------
 
 

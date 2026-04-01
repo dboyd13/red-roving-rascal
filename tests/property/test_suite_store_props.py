@@ -1,14 +1,4 @@
-"""Property 9: Suite Store List-Then-Get Round-Trip.
-
-Feature: pluggable-analysis-pipeline, Property 9: Suite Store List-Then-Get Round-Trip
-
-For any set of TestSuite objects stored in a SuiteStore, calling
-list_suites() should return a list containing all stored suite IDs,
-and calling get_suite(suite_id) for each ID should return a TestSuite
-equivalent to the one that was stored.
-
-Validates: Requirements 11.1, 11.2
-"""
+"""Suite Store List-Then-Get Round-Trip."""
 from __future__ import annotations
 
 import boto3
@@ -88,7 +78,6 @@ def _store_suite(table_name: str, suite: TestSuite) -> None:
 def test_list_then_get_roundtrip(suites: list[TestSuite]) -> None:
     """Store suites, list IDs, then get each — returned suite equals stored suite.
 
-    **Validates: Requirements 11.1, 11.2**
     """
     with moto.mock_aws():
         _create_table()

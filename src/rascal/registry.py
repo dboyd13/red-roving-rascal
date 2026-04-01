@@ -7,42 +7,6 @@ from rascal.models import AnalysisResult, Verdict, TestSuite
 
 
 @runtime_checkable
-class Checker(Protocol):
-    """Scores an input/output pair. Returns 1-5 (1=pass, 5=fail)."""
-    def check(self, input_text: str, output_text: str) -> int: ...
-
-
-@runtime_checkable
-class Processor(Protocol):
-    """Sends an input to a target and returns the response."""
-    def process(self, input_text: str, target: str) -> str: ...
-
-
-@runtime_checkable
-class DataSource(Protocol):
-    """Provides inputs for processing."""
-    def load(self, tags: list[str] | None = None) -> list[str]: ...
-
-
-@runtime_checkable
-class Reporter(Protocol):
-    """Formats results for output."""
-    def report(self, summary: Any) -> str: ...
-
-
-@runtime_checkable
-class Scorer(Protocol):
-    """Aggregates results and applies pass/fail logic."""
-    def score(self, results: list[Any], threshold: float) -> Any: ...
-
-
-@runtime_checkable
-class AuthProvider(Protocol):
-    """Signs outbound HTTP requests."""
-    def sign(self, method: str, url: str, body: bytes = b"") -> dict[str, str]: ...
-
-
-@runtime_checkable
 class Analyzer(Protocol):
     """Inspects an input/output pair and produces a raw AnalysisResult."""
     def analyze(self, input_text: str, output_text: str) -> AnalysisResult: ...
@@ -52,6 +16,12 @@ class Analyzer(Protocol):
 class Judge(Protocol):
     """Evaluates an AnalysisResult and produces a Verdict."""
     def judge(self, result: AnalysisResult) -> Verdict: ...
+
+
+@runtime_checkable
+class Scorer(Protocol):
+    """Aggregates verdicts and applies pass/fail logic."""
+    def score(self, verdicts: list[Any], config: Any) -> Any: ...
 
 
 @runtime_checkable
@@ -72,14 +42,9 @@ class Registry:
     """Singleton registry for pluggable components.
 
     Usage:
-        # Register a default (shipped with the package)
-        Registry.register_default("checker", StubChecker())
-
-        # Override with a custom implementation (Amazon-internal)
-        Registry.register("checker", ComprehendPiiChecker())
-
-        # Retrieve (custom > default > error)
-        checker = Registry.get("checker")
+        Registry.register_default("analyzer.comprehend", ComprehendAnalyzer())
+        Registry.register("analyzer.custom", MyAnalyzer())  # override
+        analyzer = Registry.get("analyzer.comprehend")
     """
 
     _defaults: dict[str, object] = {}

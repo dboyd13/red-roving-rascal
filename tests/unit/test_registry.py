@@ -63,7 +63,7 @@ class NotASuiteStore:
         return TestSuite(suite_id=suite_id, name="x")
 
 
-# --- Protocol isinstance checks (Req 1.2, 2.2, 8.3) ---
+# --- Protocol isinstance checks ---
 
 
 class TestAnalyzerProtocol:
@@ -93,7 +93,7 @@ class TestSuiteStoreProtocol:
         assert not isinstance(NotASuiteStore(), SuiteStore)
 
 
-# --- Registration and retrieval (Req 1.4, 2.4, 8.6) ---
+# --- Registration and retrieval ---
 
 
 class TestRegistryAnalyzerKeys:
@@ -133,7 +133,7 @@ class TestRegistrySuiteStoreKey:
         assert Registry.get("suite_store") is s
 
 
-# --- ComponentNotFoundError (Req 14.1) ---
+# --- ComponentNotFoundError ---
 
 
 class TestComponentNotFoundError:
@@ -150,7 +150,7 @@ class TestComponentNotFoundError:
             Registry.get("suite_store")
 
 
-# --- keys() with legacy and new keys (Req 14.2, 14.3) ---
+# --- keys() with legacy and new keys ---
 
 
 class TestRegistryKeys:

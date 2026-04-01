@@ -1,14 +1,4 @@
-"""Property 2: Registry Register-Then-Get Round-Trip.
-
-Feature: pluggable-analysis-pipeline, Property 2: Registry Register-Then-Get Round-Trip
-
-For any component object and any valid registry key (including
-analyzer.*, judge.*, scorer, suite_store), registering the component
-with that key and then calling get() with the same key should return
-the exact same object (identity check with `is`).
-
-Validates: Requirements 1.4, 2.4, 4.5, 8.6
-"""
+"""Registry Register-Then-Get Round-Trip."""
 from __future__ import annotations
 
 import pytest
@@ -56,7 +46,6 @@ def _clear_registry() -> None:
 def test_register_then_get_returns_same_object(key: str) -> None:
     """Registering a component then getting it returns the same object.
 
-    **Validates: Requirements 1.4, 2.4, 4.5, 8.6**
     """
     Registry.clear()
     component = object()
@@ -66,7 +55,6 @@ def test_register_then_get_returns_same_object(key: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Strategies for Property 7: mixed legacy + pipeline keys
 # ---------------------------------------------------------------------------
 
 st_legacy_key = st.sampled_from(["processor", "checker", "data_source", "reporter", "scorer"])
@@ -88,9 +76,7 @@ def test_registry_backward_compatibility_with_mixed_keys(
 ) -> None:
     """Legacy and new pipeline keys coexist and resolve independently.
 
-    Feature: pluggable-analysis-pipeline, Property 7: Registry Backward Compatibility with Mixed Keys
 
-    **Validates: Requirements 14.2, 14.3**
     """
     Registry.clear()
 

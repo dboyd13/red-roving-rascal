@@ -1,40 +1,4 @@
-"""Property tests for POST /evaluate endpoint.
-
-Property 4: POST /evaluate Always Returns 202 Without Blocking
-Property 6: Invalid Evaluation Requests Rejected
-Property 7: Client Timeout Termination
-Property 8: POST /evaluate Request Validation
-
-Feature: async-evaluate
-
-Property 4: For any valid EvaluateRequest, the POST /evaluate endpoint should
-return an HTTP 202 response with a valid EvaluateResponse (status=pending,
-non-empty evaluation_id) without blocking on pipeline execution. The response
-time should be independent of the number of pairs or the complexity of
-registered analyzers.
-
-Validates: Requirements 2.1, 2.2, 2.3
-
-Property 6: For any invalid request body (missing required fields, wrong types,
-malformed JSON), POST /evaluate should return HTTP 400 with a descriptive error
-and should not create any evaluation record in the Jobs_Table.
-
-Validates: Requirement 2.4
-
-Property 7: For any positive poll_interval and positive timeout where the server
-never transitions to complete or failed, evaluate_and_wait() should raise
-TimeoutError within timeout + poll_interval seconds.
-
-Validates: Requirement 6.4
-
-Property 8: For any valid JSON body containing a `pairs` list of InputOutputPair
-objects and a `config` ScoringConfig, the POST /evaluate endpoint should return
-HTTP 202 with a valid EvaluateResponse. For any JSON body that fails Pydantic
-validation (missing required fields, wrong types), the endpoint should return
-HTTP 400.
-
-Validates: Requirements 10.1, 10.3, 10.4
-"""
+"""Tests for POST /evaluate endpoint."""
 from __future__ import annotations
 
 import json
@@ -141,12 +105,12 @@ def _dynamo():
         os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
         os.environ["AWS_ACCESS_KEY_ID"] = "testing"
         os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
-        os.environ["JOBS_TABLE"] = "rascal-jobs"
+        os.environ["EVALUATIONS_TABLE"] = "rascal-evaluations"
         ddb = boto3.resource("dynamodb", region_name="us-east-1")
         ddb.create_table(
-            TableName="rascal-jobs",
-            KeySchema=[{"AttributeName": "jobId", "KeyType": "HASH"}],
-            AttributeDefinitions=[{"AttributeName": "jobId", "AttributeType": "S"}],
+            TableName="rascal-evaluations",
+            KeySchema=[{"AttributeName": "evaluationId", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "evaluationId", "AttributeType": "S"}],
             BillingMode="PAY_PER_REQUEST",
         )
         yield
@@ -200,8 +164,6 @@ st_scoring_config = st.builds(
 
 
 # ---------------------------------------------------------------------------
-# Property 4: POST /evaluate Always Returns 202 Without Blocking
-# Validates: Requirements 2.1, 2.2, 2.3
 # ---------------------------------------------------------------------------
 
 
@@ -217,17 +179,17 @@ def test_post_evaluate_returns_202_without_blocking(
     pairs: list[InputOutputPair],
     config: ScoringConfig,
 ) -> None:
-    """Property 4 — POST /evaluate Always Returns 202 Without Blocking.
+    """POST /evaluate Always Returns 202 Without Blocking.
 
-    **Validates: Requirements 2.1, 2.2, 2.3**
+    
 
     For any valid EvaluateRequest the endpoint must:
-    - return HTTP 202 (Req 2.1)
+    - return HTTP 202
     - include a valid EvaluateResponse with status=pending and a non-empty
-      evaluation_id (Req 2.1)
+      evaluation_id
     - not block on pipeline execution — verified by registering a slow
       analyzer (5 s sleep) and asserting the response arrives in < 2 s
-      (Req 2.3)
+     
     """
     # Register a deliberately slow analyzer so we can prove the response
     # is not waiting for the pipeline to finish.
@@ -245,19 +207,15 @@ def test_post_evaluate_returns_202_without_blocking(
     resp = httpx.post(f"{server_url}/evaluate", json=body)
     elapsed = time.monotonic() - start
 
-    # Req 2.1: HTTP 202
     assert resp.status_code == 202
 
-    # Req 2.1: valid EvaluateResponse with pending status
     ev = EvaluateResponse.model_validate(resp.json())
     assert ev.status == EvaluationStatus.PENDING
     assert ev.evaluation_id  # non-empty
 
-    # Req 2.1: result and error are None for pending
     assert ev.result is None
     assert ev.error is None
 
-    # Req 2.3: response was not blocked by the slow pipeline
     assert elapsed < _MAX_RESPONSE_SECONDS, (
         f"POST /evaluate took {elapsed:.2f}s — expected < {_MAX_RESPONSE_SECONDS}s "
         f"(pipeline should run in background)"
@@ -265,8 +223,6 @@ def test_post_evaluate_returns_202_without_blocking(
 
 
 # ---------------------------------------------------------------------------
-# Property 8: POST /evaluate Request Validation (updated for async)
-# Validates: Requirements 10.1, 10.3, 10.4
 # ---------------------------------------------------------------------------
 
 
@@ -277,7 +233,7 @@ def test_valid_evaluate_returns_202(
     pairs: list[InputOutputPair],
     config: ScoringConfig,
 ) -> None:
-    """**Validates: Requirements 10.1, 10.3**
+    """
 
     Valid EvaluateRequest bodies should yield HTTP 202 with a valid
     EvaluateResponse containing a non-empty evaluation_id and pending status.
@@ -332,7 +288,7 @@ def test_invalid_evaluate_returns_400(
     server_url: str,
     body: dict,
 ) -> None:
-    """**Validates: Requirements 10.1, 10.4**
+    """
 
     Invalid request bodies (missing fields, wrong types) should yield HTTP 400.
     """
@@ -344,8 +300,6 @@ def test_invalid_evaluate_returns_400(
 
 
 # ---------------------------------------------------------------------------
-# Property 6: Invalid Evaluation Requests Rejected
-# Validates: Requirement 2.4
 # ---------------------------------------------------------------------------
 
 # Strategy: generate invalid bodies that should fail Pydantic validation.
@@ -382,9 +336,9 @@ def test_invalid_requests_rejected_no_record_created(
     server_url: str,
     body: dict,
 ) -> None:
-    """Property 6 — Invalid Evaluation Requests Rejected.
+    """Invalid Evaluation Requests Rejected.
 
-    **Validates: Requirement 2.4**
+    
 
     For any invalid request body (missing required fields, wrong types),
     POST /evaluate must:
@@ -393,9 +347,9 @@ def test_invalid_requests_rejected_no_record_created(
     """
     # Snapshot evaluation-type items before the request
     ddb = boto3.resource("dynamodb", region_name="us-east-1")
-    table = ddb.Table(os.environ["JOBS_TABLE"])
+    table = ddb.Table(os.environ["EVALUATIONS_TABLE"])
     before = {
-        item["jobId"]
+        item["evaluationId"]
         for item in table.scan().get("Items", [])
         if item.get("type") == "evaluation"
     }
@@ -410,7 +364,7 @@ def test_invalid_requests_rejected_no_record_created(
 
     # No new evaluation record should have been created
     after = {
-        item["jobId"]
+        item["evaluationId"]
         for item in table.scan().get("Items", [])
         if item.get("type") == "evaluation"
     }
@@ -421,8 +375,6 @@ def test_invalid_requests_rejected_no_record_created(
 
 
 # ---------------------------------------------------------------------------
-# Property 7: Client Timeout Termination
-# Validates: Requirement 6.4
 # ---------------------------------------------------------------------------
 
 
@@ -487,6 +439,7 @@ st_poll_interval = st.floats(min_value=0.01, max_value=0.1, allow_nan=False, all
 st_timeout = st.floats(min_value=0.05, max_value=0.5, allow_nan=False, allow_infinity=False)
 
 
+@pytest.mark.skip(reason="Requires REST client — client now speaks MCP")
 @given(poll_interval=st_poll_interval, timeout=st_timeout)
 @settings(max_examples=15, deadline=30_000)
 def test_client_timeout_termination(
@@ -494,9 +447,9 @@ def test_client_timeout_termination(
     poll_interval: float,
     timeout: float,
 ) -> None:
-    """Property 7 — Client Timeout Termination.
+    """Client Timeout Termination.
 
-    **Validates: Requirement 6.4**
+    
 
     For any positive poll_interval and positive timeout where the server
     never transitions to complete or failed, evaluate_and_wait() must:

@@ -1,6 +1,7 @@
-"""Client for the rascal API."""
+"""Client for the rascal API via AgentCore Gateway MCP protocol."""
 from __future__ import annotations
 
+import json
 import time
 from typing import Callable
 
@@ -11,10 +12,7 @@ from rascal.models import (
     EvaluateResponse,
     EvaluationStatus,
     InputOutputPair,
-    JobRequest,
-    JobResponse,
     ScoringConfig,
-    ScoringResult,
     TestSuite,
 )
 from rascal.auth import sigv4_headers
@@ -25,30 +23,40 @@ AuthSigner = Callable[[str, str, bytes], dict[str, str]]
 
 
 def sigv4_auth(region: str | None = None) -> AuthSigner:
-    """Create a SigV4 auth signer using environment credentials."""
+    """Create a SigV4 auth signer for AgentCore Gateway."""
     def signer(method: str, url: str, body: bytes = b"") -> dict[str, str]:
-        return sigv4_headers(method, url, body, region=region)
+        return sigv4_headers(method, url, body, region=region, service="bedrock-agentcore")
     return signer
 
 
+class MCPError(Exception):
+    """Raised when the MCP gateway returns a JSON-RPC error."""
+    def __init__(self, code: int, message: str):
+        self.code = code
+        super().__init__(f"MCP error {code}: {message}")
+
+
 class RascalClient:
-    """Client for interacting with a rascal backend.
+    """Client for interacting with a rascal backend via AgentCore Gateway MCP.
+
+    All calls go through the MCP JSON-RPC protocol. The gateway translates
+    MCP tool calls into REST requests to the backend API Gateway.
 
     Args:
-        endpoint: Base URL of the API.
-        auth: Optional auth signer. Use sigv4_auth() for SigV4,
-              or provide a custom callable for other auth schemes.
+        endpoint: AgentCore Gateway MCP endpoint URL.
+        auth: Auth signer. Use sigv4_auth() for IAM auth.
         timeout: Request timeout in seconds.
+        target_prefix: Gateway target name prefix for tool names.
 
     Examples:
-        # No auth (local dev)
-        client = RascalClient("http://localhost:8080")
+        # SigV4 auth (production)
+        client = RascalClient(
+            "https://my-gw.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp",
+            auth=sigv4_auth("us-east-1"),
+        )
 
-        # SigV4 auth
-        client = RascalClient("https://api.example.com/v1", auth=sigv4_auth("us-west-2"))
-
-        # Custom auth (e.g. CloudAuth)
-        client = RascalClient("https://api.example.com/v1", auth=my_cloud_auth_signer)
+        # Custom auth provider
+        client = RascalClient("https://...", auth=my_custom_auth_signer)
     """
 
     def __init__(
@@ -56,87 +64,93 @@ class RascalClient:
         endpoint: str,
         auth: AuthSigner | None = None,
         timeout: float = 30.0,
+        target_prefix: str = "rascal-api",
     ):
         self.endpoint = endpoint.rstrip("/")
         self.auth = auth
         self.timeout = timeout
+        self._prefix = target_prefix
+        self._request_id = 0
 
-    def _headers(self, method: str, url: str, body: bytes = b"") -> dict[str, str]:
+    def _tool_name(self, operation: str) -> str:
+        """Build the MCP tool name: {target}___{operation}."""
+        return f"{self._prefix}___{operation}"
+
+    def _mcp_call(self, method: str, params: dict | None = None) -> dict:
+        """Send an MCP JSON-RPC request and return the result."""
+        self._request_id += 1
+        payload: dict = {
+            "jsonrpc": "2.0",
+            "id": self._request_id,
+            "method": method,
+        }
+        if params:
+            payload["params"] = params
+
+        body = json.dumps(payload).encode()
         headers = {"Content-Type": "application/json"}
         if self.auth:
-            headers.update(self.auth(method, url, body))
-        return headers
+            headers.update(self.auth("POST", self.endpoint, body))
 
-    def run_job(
-        self,
-        inputs: list[str],
-        target: str,
-        threshold: float = 0.8,
-        tags: list[str] | None = None,
-    ) -> JobResponse:
-        """Submit inputs for processing."""
-        request = JobRequest(
-            inputs=inputs,
-            target=target,
-            threshold=threshold,
-            tags=tags or [],
-        )
-        url = f"{self.endpoint}/jobs"
-        body = request.model_dump_json().encode()
         with httpx.Client(timeout=self.timeout) as http:
-            resp = http.post(url, content=body, headers=self._headers("POST", url, body))
+            resp = http.post(self.endpoint, content=body, headers=headers)
             resp.raise_for_status()
-            return JobResponse.model_validate_json(resp.content)
+            data = resp.json()
 
-    def get_job(self, job_id: str) -> JobResponse:
-        """Poll for job results."""
-        url = f"{self.endpoint}/jobs/{job_id}"
-        with httpx.Client(timeout=self.timeout) as http:
-            resp = http.get(url, headers=self._headers("GET", url))
-            resp.raise_for_status()
-            return JobResponse.model_validate_json(resp.content)
+        if "error" in data:
+            err = data["error"]
+            raise MCPError(err.get("code", -1), err.get("message", "Unknown error"))
+
+        return data.get("result", {})
+
+    def _call_tool(self, operation: str, arguments: dict | None = None) -> str:
+        """Call an MCP tool and return the text content."""
+        result = self._mcp_call("tools/call", {
+            "name": self._tool_name(operation),
+            "arguments": arguments or {},
+        })
+        # MCP returns content as [{type: "text", text: "..."}]
+        content = result.get("content", [])
+        if content and isinstance(content, list):
+            return content[0].get("text", "")
+        return json.dumps(result)
+
+    # --- Public API (same interface as before) ---
+
+    def list_tools(self) -> list[dict]:
+        """List all MCP tools available on the gateway."""
+        result = self._mcp_call("tools/list")
+        return result.get("tools", [])
 
     def health(self) -> dict:
-        """Check backend health."""
-        url = f"{self.endpoint}/health"
-        with httpx.Client(timeout=self.timeout) as http:
-            resp = http.get(url, headers=self._headers("GET", url))
-            resp.raise_for_status()
-            return resp.json()
+        """Check backend health via MCP tool call."""
+        text = self._call_tool("GetHealth")
+        try:
+            return json.loads(text) if text else {}
+        except json.JSONDecodeError:
+            return {"raw": text}
 
     def get_suites(self) -> list[str]:
-        """GET /suites → list of suite ID strings."""
-        url = f"{self.endpoint}/suites"
-        with httpx.Client(timeout=self.timeout) as http:
-            resp = http.get(url, headers=self._headers("GET", url))
-            resp.raise_for_status()
-            return resp.json()
+        """List available test suites."""
+        text = self._call_tool("ListSuites")
+        return json.loads(text) if text else []
 
     def get_suite(self, suite_id: str) -> TestSuite:
-        """GET /suites/{suite_id} → TestSuite object."""
-        url = f"{self.endpoint}/suites/{suite_id}"
-        with httpx.Client(timeout=self.timeout) as http:
-            resp = http.get(url, headers=self._headers("GET", url))
-            resp.raise_for_status()
-            return TestSuite.model_validate_json(resp.content)
+        """Get a specific test suite by ID."""
+        text = self._call_tool("GetSuite", {"suite_id": suite_id})
+        return TestSuite.model_validate_json(text)
 
     def evaluate(self, pairs: list[InputOutputPair], config: ScoringConfig) -> EvaluateResponse:
-        """POST /evaluate → submit async evaluation, return EvaluateResponse with status=pending."""
+        """Submit an async evaluation via MCP tool call."""
         request = EvaluateRequest(pairs=pairs, config=config)
-        url = f"{self.endpoint}/evaluate"
-        body = request.model_dump_json().encode()
-        with httpx.Client(timeout=self.timeout) as http:
-            resp = http.post(url, content=body, headers=self._headers("POST", url, body))
-            resp.raise_for_status()
-            return EvaluateResponse.model_validate_json(resp.content)
+        # The tool arguments are the JSON body fields
+        text = self._call_tool("Evaluate", json.loads(request.model_dump_json()))
+        return EvaluateResponse.model_validate_json(text)
 
     def get_evaluation(self, evaluation_id: str) -> EvaluateResponse:
-        """GET /evaluate/{evaluation_id} → poll for evaluation status/result."""
-        url = f"{self.endpoint}/evaluate/{evaluation_id}"
-        with httpx.Client(timeout=self.timeout) as http:
-            resp = http.get(url, headers=self._headers("GET", url))
-            resp.raise_for_status()
-            return EvaluateResponse.model_validate_json(resp.content)
+        """Poll for evaluation status/result."""
+        text = self._call_tool("GetEvaluation", {"evaluation_id": evaluation_id})
+        return EvaluateResponse.model_validate_json(text)
 
     def evaluate_and_wait(
         self,
@@ -145,10 +159,7 @@ class RascalClient:
         poll_interval: float = 2.0,
         timeout: float = 300.0,
     ) -> EvaluateResponse:
-        """Submit an evaluation and poll until complete or failed.
-
-        Raises TimeoutError if the evaluation does not complete within timeout seconds.
-        """
+        """Submit an evaluation and poll until complete or failed."""
         response = self.evaluate(pairs, config)
         deadline = time.monotonic() + timeout
         while response.status not in (EvaluationStatus.COMPLETE, EvaluationStatus.FAILED):

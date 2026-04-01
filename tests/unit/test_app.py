@@ -2,8 +2,6 @@
 
 Tests POST /evaluate, GET /suites, and GET /suites/{suite_id} endpoints.
 
-Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 11.1, 11.2, 11.3, 11.4
-Requirements: 2.1, 2.2, 2.3, 2.4, 2.5
 """
 from __future__ import annotations
 
@@ -107,12 +105,12 @@ def _dynamo():
         os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
         os.environ["AWS_ACCESS_KEY_ID"] = "testing"
         os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
-        os.environ["JOBS_TABLE"] = "rascal-jobs"
+        os.environ["EVALUATIONS_TABLE"] = "rascal-evaluations"
         ddb = boto3.resource("dynamodb", region_name="us-east-1")
         ddb.create_table(
-            TableName="rascal-jobs",
-            KeySchema=[{"AttributeName": "jobId", "KeyType": "HASH"}],
-            AttributeDefinitions=[{"AttributeName": "jobId", "AttributeType": "S"}],
+            TableName="rascal-evaluations",
+            KeySchema=[{"AttributeName": "evaluationId", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "evaluationId", "AttributeType": "S"}],
             BillingMode="PAY_PER_REQUEST",
         )
         yield
@@ -154,7 +152,7 @@ _SAMPLE_SUITE = TestSuite(
 
 
 # ---------------------------------------------------------------------------
-# POST /evaluate — valid request → 202 (Req 2.1, 2.2, 2.3)
+# POST /evaluate — valid request → 202
 # ---------------------------------------------------------------------------
 
 
@@ -185,7 +183,7 @@ class TestEvaluateValid:
 
 
 # ---------------------------------------------------------------------------
-# POST /evaluate — invalid body → 400 (Req 10.4)
+# POST /evaluate — invalid body → 400
 # ---------------------------------------------------------------------------
 
 
@@ -215,7 +213,7 @@ class TestEvaluateInvalid:
 
 
 # ---------------------------------------------------------------------------
-# POST /evaluate — storage error → 500 (Req 2.5)
+# POST /evaluate — storage error → 500
 # ---------------------------------------------------------------------------
 
 
@@ -235,7 +233,7 @@ class TestEvaluateStorageError:
 
 
 # ---------------------------------------------------------------------------
-# GET /suites — with registered SuiteStore → 200 (Req 11.1)
+# GET /suites — with registered SuiteStore → 200
 # ---------------------------------------------------------------------------
 
 
@@ -259,7 +257,7 @@ class TestGetSuites:
 
 
 # ---------------------------------------------------------------------------
-# GET /suites — no SuiteStore → 501 (Req 11.4)
+# GET /suites — no SuiteStore → 501
 # ---------------------------------------------------------------------------
 
 
@@ -272,7 +270,7 @@ class TestGetSuitesNoStore:
 
 
 # ---------------------------------------------------------------------------
-# GET /suites/{id} — valid ID → 200 (Req 11.2)
+# GET /suites/{id} — valid ID → 200
 # ---------------------------------------------------------------------------
 
 
@@ -292,7 +290,7 @@ class TestGetSuiteById:
 
 
 # ---------------------------------------------------------------------------
-# GET /suites/{id} — unknown ID → 404 (Req 11.3)
+# GET /suites/{id} — unknown ID → 404
 # ---------------------------------------------------------------------------
 
 
@@ -308,7 +306,7 @@ class TestGetSuiteNotFound:
 
 
 # ---------------------------------------------------------------------------
-# GET /suites/{id} — no SuiteStore → 501 (Req 11.4)
+# GET /suites/{id} — no SuiteStore → 501
 # ---------------------------------------------------------------------------
 
 
@@ -321,7 +319,7 @@ class TestGetSuiteByIdNoStore:
 
 
 # ---------------------------------------------------------------------------
-# GET /evaluate/{id} — existing evaluation → 200 (Req 4.1)
+# GET /evaluate/{id} — existing evaluation → 200
 # ---------------------------------------------------------------------------
 
 
@@ -350,7 +348,7 @@ class TestGetEvaluationFound:
 
 
 # ---------------------------------------------------------------------------
-# GET /evaluate/{id} — unknown ID → 404 (Req 4.2)
+# GET /evaluate/{id} — unknown ID → 404
 # ---------------------------------------------------------------------------
 
 
@@ -364,7 +362,7 @@ class TestGetEvaluationNotFound:
 
 
 # ---------------------------------------------------------------------------
-# Background thread completes evaluation (Req 3.1, 3.2, 3.3)
+# Background thread completes evaluation
 # ---------------------------------------------------------------------------
 
 

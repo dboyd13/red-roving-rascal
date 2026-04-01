@@ -1,6 +1,5 @@
 """Unit tests for DynamoDBSuiteStore.
 
-Requirements: 8.1, 8.2, 8.7, 8.8
 """
 from __future__ import annotations
 
@@ -57,7 +56,7 @@ def _put_suite(suite: TestSuite) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Tests: get_suite with known suite (Req 8.1, 8.2)
+# Tests: get_suite with known suite
 # ---------------------------------------------------------------------------
 
 
@@ -100,7 +99,7 @@ class TestGetSuiteKnown:
 
 
 # ---------------------------------------------------------------------------
-# Tests: get_suite with unknown ID (Req 8.8)
+# Tests: get_suite with unknown ID
 # ---------------------------------------------------------------------------
 
 
@@ -113,7 +112,7 @@ class TestGetSuiteUnknown:
 
 
 # ---------------------------------------------------------------------------
-# Tests: list_suites (Req 8.1, 8.2)
+# Tests: list_suites
 # ---------------------------------------------------------------------------
 
 
@@ -138,7 +137,7 @@ class TestListSuites:
 
 
 # ---------------------------------------------------------------------------
-# Tests: default table name from env var (Req 8.7)
+# Tests: default table name from env var
 # ---------------------------------------------------------------------------
 
 

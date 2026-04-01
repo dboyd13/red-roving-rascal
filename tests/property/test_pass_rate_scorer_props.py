@@ -1,16 +1,4 @@
-"""Property 5: PassRateScorer Aggregation Correctness.
-
-Feature: pluggable-analysis-pipeline, Property 5: PassRateScorer Aggregation Correctness
-
-For any list of Verdict objects and any ScoringConfig, the PassRateScorer
-should group verdicts by analyzer_name, compute each group's pass rate as
-passed_count / total_count, use the threshold from config.thresholds or
-default to 1.0 if absent, set ScoringResult.passed to True iff every
-per-analyzer pass rate meets or exceeds its threshold, and produce a
-non-empty description string.
-
-Validates: Requirements 5.1, 5.2, 5.3, 5.4, 5.5, 5.6
-"""
+"""PassRateScorer Aggregation Correctness."""
 from __future__ import annotations
 
 from collections import defaultdict
@@ -60,7 +48,7 @@ def test_pass_rate_scorer_aggregation(
     verdicts: list[Verdict],
     config: ScoringConfig,
 ) -> None:
-    """**Validates: Requirements 5.1, 5.2, 5.3, 5.4, 5.5, 5.6**"""
+    
     scorer = PassRateScorer()
     result = scorer.score(verdicts, config)
 
