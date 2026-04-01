@@ -1,0 +1,51 @@
+name: E2E Gateway Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/rascal/**"
+      - "tests/e2e/**"
+      - ".github/workflows/e2e.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/rascal/**"
+      - "tests/e2e/**"
+      - ".github/workflows/e2e.yml"
+  schedule:
+    - cron: "0 22 * * *"  # Daily at 8am AEST (10pm UTC)
+  workflow_dispatch:
+
+# Only one e2e run at a time (shared live infrastructure)
+concurrency:
+  group: e2e-gateway
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # Required for OIDC
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install rascal
+        run: pip install -e ".[test]"
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.E2E_AWS_ROLE_ARN }}
+          aws-region: ${{ vars.E2E_AWS_REGION }}
+
+      - name: Run e2e tests
+        env:
+          RASCAL_GATEWAY_URL: ${{ vars.E2E_GATEWAY_URL }}
+          AWS_REGION: ${{ vars.E2E_AWS_REGION }}
+        run: python -m pytest tests/e2e/ -v -s
