@@ -28,6 +28,11 @@ cdk = [
     "aws-cdk-lib>=2.150.0",
     "constructs>=10.0.0",
 ]
+test = [
+    "pytest>=7.0",
+    "hypothesis",
+    "moto[dynamodb]>=5.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/dboyd13/red-roving-rascal"
