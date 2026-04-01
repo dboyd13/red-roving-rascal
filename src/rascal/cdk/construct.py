@@ -364,7 +364,7 @@ class RascalBackendConstruct(Construct):
         # --- AgentCore Gateway ---
         gateway = agentcore.CfnGateway(
             self, "AgentCoreGateway",
-            name=f"{stack.stack_name}-rascal-gw",
+            name=f"{stack.stack_name[:38]}-rascal-gw",
             authorizer_type=authorizer_type,
             protocol_type="MCP",
             role_arn=self.gateway_role.role_arn,
