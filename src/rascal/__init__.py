@@ -1,3 +1,3 @@
 """red-roving-rascal: a lightweight API testing and evaluation toolkit."""
 
-__version__ = "0.3.2"
+__version__ = "0.4.0"
