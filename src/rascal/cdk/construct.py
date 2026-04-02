@@ -285,8 +285,9 @@ class RascalBackendConstruct(Construct):
                 interception_points=["RESPONSE"], interceptor=agentcore.CfnGateway.InterceptorConfigurationProperty(
                     lambda_=agentcore.CfnGateway.LambdaInterceptorConfigurationProperty(arn=response_interceptor_arn))))
 
+        gw_name_limit = 38 if suffix == "gw" else 34
         gw = agentcore.CfnGateway(self, f"{p}AgentCoreGateway",
-            name=f"{stack.stack_name[:34]}-rascal-{suffix}", authorizer_type=authorizer_type,
+            name=f"{stack.stack_name[:gw_name_limit]}-rascal-{suffix}", authorizer_type=authorizer_type,
             protocol_type="MCP", role_arn=role.role_arn, authorizer_configuration=auth_cfg,
             description=f"Rascal MCP Gateway ({authorizer_type})", interceptor_configurations=ic or None)
 
