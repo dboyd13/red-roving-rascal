@@ -58,38 +58,17 @@ class RascalBackendConstruct(Construct):
         desired_count: int = 1,
         container_port: int = 8080,
         removal_policy: RemovalPolicy = RemovalPolicy.DESTROY,
-        # Gateway configs (new API)
+        # Gateway configs
         iam_gateway: IamGatewayConfig | None = None,
         jwt_gateway: JwtGatewayConfig | None = None,
         # Interceptors
         request_interceptor_arn: str | None = None,
         response_interceptor_arn: str | None = None,
-        # Legacy params (backward compat — prefer iam_gateway / jwt_gateway)
-        allowed_account_ids: list[str] | None = None,
-        allowed_org_id: str | None = None,
-        gateway_resource_policy: dict | None = None,
-        jwt_issuer_url: str | None = None,
-        jwt_audience: list[str] | None = None,
     ) -> None:
         super().__init__(scope, id)
 
-        # --- Backward compat: convert legacy params to new config objects ---
-        if jwt_issuer_url is not None and iam_gateway is None and jwt_gateway is None:
-            # Legacy JWT mode: single CUSTOM_JWT gateway
-            jwt_gateway = JwtGatewayConfig(
-                discovery_url=jwt_issuer_url,
-                allowed_audiences=jwt_audience or [],
-            )
-        elif iam_gateway is None and jwt_gateway is None:
-            # Legacy IAM mode: single AWS_IAM gateway
-            iam_gateway = IamGatewayConfig(
-                allowed_account_ids=allowed_account_ids,
-                allowed_org_id=allowed_org_id,
-                resource_policy=gateway_resource_policy,
-            )
-
         if iam_gateway is None and jwt_gateway is None:
-            raise ValueError("At least one of iam_gateway or jwt_gateway must be provided")
+            iam_gateway = IamGatewayConfig()  # default: bare IAM gateway
 
         # --- Infrastructure (shared by all gateways) ---
 
@@ -229,12 +208,12 @@ class RascalBackendConstruct(Construct):
         request_interceptor_arn: str | None = None,
         response_interceptor_arn: str | None = None,
     ) -> None:
-        """Create a single AgentCore Gateway + Target."""
+        """Create a single AgentCore Gateway + Target + optional Policy Engine."""
+        import hashlib
         stack = Stack.of(self)
-        from aws_cdk import aws_lambda as lambda_, CustomResource
         p = prefix
 
-        # IAM role for this gateway
+        # --- Gateway IAM role ---
         role = iam.Role(self, f"{p}GatewayRole",
             assumed_by=iam.ServicePrincipal("bedrock-agentcore.amazonaws.com"),
             description=f"Role for AgentCore {suffix.upper()} Gateway")
@@ -242,13 +221,16 @@ class RascalBackendConstruct(Construct):
             resources=[Fn.join("", ["arn:aws:execute-api:", stack.region, ":", stack.account, ":", api.rest_api_id, "/v1/*"])]))
         role.add_to_policy(iam.PolicyStatement(actions=["apigateway:GET"],
             resources=[Fn.join("", ["arn:aws:apigateway:", stack.region, "::/restapis/", api.rest_api_id, "/*"])]))
+        role.add_to_policy(iam.PolicyStatement(
+            actions=["bedrock-agentcore:AuthorizeAction", "bedrock-agentcore:PartiallyAuthorizeActions",
+                     "bedrock-agentcore:GetPolicyEngine"],
+            resources=["*"]))
         if interceptor_arns:
             role.add_to_policy(iam.PolicyStatement(actions=["lambda:InvokeFunction"], resources=interceptor_arns))
-
         if not prefix:
             self.gateway_role = role
 
-        # Authorizer config
+        # --- Authorizer config ---
         auth_cfg = None
         if authorizer_type == "CUSTOM_JWT" and jwt_config:
             jwt_props: dict = {
@@ -273,7 +255,7 @@ class RascalBackendConstruct(Construct):
             auth_cfg = agentcore.CfnGateway.AuthorizerConfigurationProperty(
                 custom_jwt_authorizer=agentcore.CfnGateway.CustomJWTAuthorizerConfigurationProperty(**jwt_props))
 
-        # Interceptors
+        # --- Interceptors ---
         ic: list = []
         if request_interceptor_arn:
             ic.append(agentcore.CfnGateway.GatewayInterceptorConfigurationProperty(
@@ -285,13 +267,54 @@ class RascalBackendConstruct(Construct):
                 interception_points=["RESPONSE"], interceptor=agentcore.CfnGateway.InterceptorConfigurationProperty(
                     lambda_=agentcore.CfnGateway.LambdaInterceptorConfigurationProperty(arn=response_interceptor_arn))))
 
+        # --- Cedar policies (from either gateway config) ---
+        cedar_policies = None
+        if iam_config is not None:
+            cedar_policies = iam_config.initial_cedar_policies
+        elif jwt_config is not None:
+            cedar_policies = jwt_config.initial_cedar_policies
+
+        # --- Policy Engine (native CFN resources) ---
+        # Only provision when Cedar policies are explicitly provided.
+        # Without Cedar, resource policy alone controls access.
+        if cedar_policies:
+            engine_name = f"rascal{p.lower() or 'iam'}engine"[:48]
+            engine = agentcore.CfnPolicyEngine(self, f"{p}PolicyEngine",
+                name=engine_name,
+                description=f"Cedar policy engine for rascal {suffix} gateway")
+
+            for i, cedar_text in enumerate(cedar_policies):
+                h = hashlib.sha256(cedar_text.encode()).hexdigest()[:8]
+                policy_name = f"rascal{p.lower()}p{i}{h}"[:48]
+                cfn_policy = agentcore.CfnPolicy(self, f"{p}CedarPolicy{i}",
+                    name=policy_name,
+                    policy_engine_id=engine.attr_policy_engine_id,
+                    definition=agentcore.CfnPolicy.PolicyDefinitionProperty(
+                        cedar=agentcore.CfnPolicy.CedarPolicyProperty(
+                            statement=cedar_text,
+                        ),
+                    ),
+                )
+                cfn_policy.node.add_dependency(engine)
+
+        # --- Gateway ---
         gw_name_limit = 38 if suffix == "gw" else 34
         gw = agentcore.CfnGateway(self, f"{p}AgentCoreGateway",
             name=f"{stack.stack_name[:gw_name_limit]}-rascal-{suffix}", authorizer_type=authorizer_type,
             protocol_type="MCP", role_arn=role.role_arn, authorizer_configuration=auth_cfg,
-            description=f"Rascal MCP Gateway ({authorizer_type})", interceptor_configurations=ic or None)
+            description=f"Rascal MCP Gateway ({authorizer_type})",
+            interceptor_configurations=ic or None)
 
-        # Target
+        # Link policy engine to gateway only when Cedar policies exist
+        if cedar_policies:
+            gw.add_property_override("PolicyEngineConfiguration", {
+                "Arn": engine.attr_policy_engine_arn,
+                "Mode": "ENFORCE",
+            })
+            gw.node.add_dependency(role)
+            gw.node.add_dependency(engine)
+
+        # --- Target ---
         tgt = agentcore.CfnGatewayTarget(self, f"{p}AgentCoreTarget", name="rascal-api",
             gateway_identifier=gw.attr_gateway_identifier,
             credential_provider_configurations=[agentcore.CfnGatewayTarget.CredentialProviderConfigurationProperty(
@@ -308,7 +331,7 @@ class RascalBackendConstruct(Construct):
                                 agentcore.CfnGatewayTarget.ApiGatewayToolFilterProperty(filter_path="/suites/*", methods=["GET"])])))))
         tgt.node.add_dependency(api.deployment_stage)
 
-        # Store attributes
+        # --- Store attributes ---
         lbl = "OAuth" if prefix else ""
         if prefix:
             self.jwt_gateway_id = gw.attr_gateway_identifier
@@ -319,20 +342,19 @@ class RascalBackendConstruct(Construct):
             self.agentcore_endpoint = gw.attr_gateway_url
             self.agentcore_gateway_arn = gw.attr_gateway_arn
 
-        # Resource policy (IAM gateway only)
-        if iam_config is not None:
-            policy_doc = self._build_resource_policy(gateway_arn=gw.attr_gateway_arn,
-                allowed_account_ids=iam_config.allowed_account_ids,
-                allowed_org_id=iam_config.allowed_org_id,
-                resource_policy=iam_config.resource_policy)
-            if policy_doc is not None:
-                self._apply_resource_policy(prefix=p, gateway=gw, policy_doc=policy_doc)
+        # --- Resource policy (IAM gateway only) ---
+        if iam_config is not None and iam_config.resource_policy is not None:
+            policy_doc = json.loads(json.dumps(iam_config.resource_policy))
+            for stmt in policy_doc.get("Statement", []):
+                if stmt.get("Resource") == "GATEWAY_ARN":
+                    stmt["Resource"] = gw.attr_gateway_arn
+            self._apply_resource_policy(prefix=p, gateway=gw, policy_doc=policy_doc)
 
         CfnOutput(self, f"AgentCore{lbl}GatewayId", value=gw.attr_gateway_identifier)
         CfnOutput(self, f"AgentCore{lbl}Endpoint", value=gw.attr_gateway_url)
         CfnOutput(self, f"AgentCore{lbl}GatewayArn", value=gw.attr_gateway_arn)
 
-    def _apply_resource_policy(self, *, prefix: str, gateway, policy_doc: dict) -> None:
+    def _apply_resource_policy(self, *, prefix: str, gateway, policy_doc: dict):
         from aws_cdk import aws_lambda as lambda_, CustomResource
         p = prefix
         resource_policy_fn = lambda_.Function(self, f"{p}GatewayResourcePolicyFn",
@@ -370,26 +392,18 @@ class RascalBackendConstruct(Construct):
         resource_policy_fn.add_to_role_policy(iam.PolicyStatement(
             actions=["bedrock-agentcore:PutResourcePolicy", "bedrock-agentcore:DeleteResourcePolicy"],
             resources=[gateway.attr_gateway_arn]))
+        import hashlib as _hl
+        # Hash the static policy content to force re-invocation when principal changes.
+        # The gateway ARN is a CDK token that resolves identically across deploys,
+        # so we hash the serialized policy to detect actual content changes.
+        static_hash = _hl.sha256(json.dumps(policy_doc, sort_keys=True, default=str).encode()).hexdigest()[:16]
         cr = CustomResource(self, f"{p}GatewayResourcePolicy",
-            service_token=resource_policy_fn.function_arn, properties={"PolicyHash": json.dumps(policy_doc)})
+            service_token=resource_policy_fn.function_arn,
+            properties={
+                "PolicyHash": json.dumps(policy_doc),
+                "ContentHash": static_hash,
+            })
         cr.node.add_dependency(gateway)
+        return cr
 
-    @staticmethod
-    def _build_resource_policy(*, gateway_arn: str, allowed_account_ids: list[str] | None = None,
-                               allowed_org_id: str | None = None, resource_policy: dict | None = None) -> dict | None:
-        if resource_policy is not None:
-            policy = json.loads(json.dumps(resource_policy))
-            for stmt in policy.get("Statement", []):
-                if stmt.get("Resource") == "GATEWAY_ARN":
-                    stmt["Resource"] = gateway_arn
-            return policy
-        if allowed_account_ids:
-            principals = [f"arn:aws:iam::{a}:root" for a in allowed_account_ids]
-            return {"Version": "2012-10-17", "Statement": [{"Effect": "Allow",
-                "Principal": {"AWS": principals if len(principals) > 1 else principals[0]},
-                "Action": "bedrock-agentcore:InvokeGateway", "Resource": gateway_arn}]}
-        if allowed_org_id:
-            return {"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Principal": "*",
-                "Action": "bedrock-agentcore:InvokeGateway", "Resource": gateway_arn,
-                "Condition": {"StringEquals": {"aws:PrincipalOrgID": allowed_org_id}}}]}
-        return None
+

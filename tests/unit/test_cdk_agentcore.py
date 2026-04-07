@@ -1,15 +1,26 @@
 """Unit tests for CDK construct — AgentCore Gateway configuration."""
 from __future__ import annotations
 
+import json
+
 import pytest
 from aws_cdk import App, Stack, assertions
 from aws_cdk import aws_ecs as ecs
 
 from rascal.cdk.construct import RascalBackendConstruct
+from rascal.cdk.gateway_config import (
+    IamGatewayConfig,
+    JwtGatewayConfig,
+    resource_policy_for_accounts,
+    resource_policy_for_org,
+    resource_policy_allow_all,
+    cedar_permit_account,
+)
 
 
 @pytest.fixture()
 def template() -> assertions.Template:
+    """Bare IAM gateway — no resource policy, no Cedar."""
     app = App()
     stack = Stack(app, "TestStack")
     RascalBackendConstruct(
@@ -20,14 +31,51 @@ def template() -> assertions.Template:
 
 
 @pytest.fixture()
-def jwt_template() -> assertions.Template:
+def rp_template() -> assertions.Template:
+    """IAM gateway with resource policy only (no Cedar)."""
     app = App()
     stack = Stack(app, "TestStack")
     RascalBackendConstruct(
         stack, "Rascal",
         container_image=ecs.ContainerImage.from_registry("test/placeholder:latest"),
-        jwt_issuer_url="https://example.auth0.com/",
-        jwt_audience=["my-api"],
+        iam_gateway=IamGatewayConfig(
+            resource_policy=resource_policy_for_accounts(["111122223333"]),
+        ),
+    )
+    return assertions.Template.from_stack(stack)
+
+
+@pytest.fixture()
+def jwt_template() -> assertions.Template:
+    """JWT gateway only."""
+    app = App()
+    stack = Stack(app, "TestStack")
+    RascalBackendConstruct(
+        stack, "Rascal",
+        container_image=ecs.ContainerImage.from_registry("test/placeholder:latest"),
+        jwt_gateway=JwtGatewayConfig(
+            discovery_url="https://example.auth0.com/",
+            allowed_audiences=["my-api"],
+        ),
+    )
+    return assertions.Template.from_stack(stack)
+
+
+@pytest.fixture()
+def cedar_template() -> assertions.Template:
+    """IAM gateway with Cedar allowlisting + broad resource policy."""
+    app = App()
+    stack = Stack(app, "TestStack")
+    RascalBackendConstruct(
+        stack, "Rascal",
+        container_image=ecs.ContainerImage.from_registry("test/placeholder:latest"),
+        iam_gateway=IamGatewayConfig(
+            resource_policy=resource_policy_allow_all(),
+            initial_cedar_policies=[
+                cedar_permit_account("111122223333"),
+                cedar_permit_account("444455556666"),
+            ],
+        ),
     )
     return assertions.Template.from_stack(stack)
 
@@ -112,6 +160,149 @@ class TestAuthorizerConfig:
                 }),
             })},
         )
+
+
+class TestPolicyEngine:
+    def test_always_provisioned_iam(self, template: assertions.Template) -> None:
+        """Bare IAM gateway without Cedar does NOT get a policy engine."""
+        template_json = template.to_json()
+        for _lid, resource in template_json.get("Resources", {}).items():
+            assert resource.get("Type") != "AWS::BedrockAgentCore::PolicyEngine", \
+                "IAM gateway without Cedar policies should not have a PolicyEngine"
+
+    def test_not_provisioned_jwt_without_cedar(self, jwt_template: assertions.Template) -> None:
+        """JWT gateways without Cedar policies rely on JWT config alone."""
+        template_json = jwt_template.to_json()
+        for _lid, resource in template_json.get("Resources", {}).items():
+            assert resource.get("Type") != "AWS::BedrockAgentCore::PolicyEngine", \
+                "JWT gateway without Cedar policies should not have a PolicyEngine"
+
+    def test_provisioned_jwt_with_cedar(self) -> None:
+        """JWT gateways WITH Cedar policies get a policy engine."""
+        app = App()
+        stack = Stack(app, "TestStack")
+        RascalBackendConstruct(
+            stack, "Rascal",
+            container_image=ecs.ContainerImage.from_registry("test/placeholder:latest"),
+            jwt_gateway=JwtGatewayConfig(
+                discovery_url="https://example.auth0.com/",
+                allowed_audiences=["my-api"],
+                initial_cedar_policies=[
+                    'permit(principal is AgentCore::OAuthUser, action, resource);',
+                ],
+            ),
+        )
+        tmpl = assertions.Template.from_stack(stack)
+        tmpl.has_resource("AWS::BedrockAgentCore::PolicyEngine", assertions.Match.any_value())
+        tmpl.has_resource("AWS::BedrockAgentCore::Policy", assertions.Match.any_value())
+
+    def test_gateway_links_to_engine(self, cedar_template) -> None:
+        """Gateway with Cedar references the policy engine."""
+        cedar_template.has_resource_properties(
+            "AWS::BedrockAgentCore::Gateway",
+            {"PolicyEngineConfiguration": assertions.Match.object_like({
+                "Mode": "ENFORCE",
+            })},
+        )
+
+    def test_gateway_role_has_policy_permissions(self, template: assertions.Template) -> None:
+        template_json = template.to_json()
+        found = False
+        for _lid, resource in template_json.get("Resources", {}).items():
+            if resource.get("Type") != "AWS::IAM::Policy":
+                continue
+            for stmt in resource.get("Properties", {}).get("PolicyDocument", {}).get("Statement", []):
+                actions = stmt.get("Action", [])
+                if isinstance(actions, str):
+                    actions = [actions]
+                if "bedrock-agentcore:AuthorizeAction" in actions:
+                    found = True
+                    break
+        assert found
+
+
+class TestResourcePolicyOnly:
+    def test_resource_policy_applied(self, rp_template: assertions.Template) -> None:
+        """Resource policy Lambda is created when resource_policy is provided."""
+        rp_template.has_resource_properties(
+            "AWS::Lambda::Function",
+            {"Environment": assertions.Match.object_like({
+                "Variables": assertions.Match.object_like({
+                    "POLICY": assertions.Match.any_value(),
+                }),
+            })},
+        )
+
+    def test_no_cedar_seed(self, rp_template: assertions.Template) -> None:
+        """No Cedar seed Lambda when no initial_cedar_policies."""
+        template_json = rp_template.to_json()
+        for _lid, resource in template_json.get("Resources", {}).items():
+            if resource.get("Type") != "AWS::Lambda::Function":
+                continue
+            env_vars = resource.get("Properties", {}).get("Environment", {}).get("Variables", {})
+            assert "CEDAR_POLICIES" not in env_vars
+
+
+class TestCedarPolicySeeding:
+    def test_cedar_policies_created(self, cedar_template: assertions.Template) -> None:
+        """Cedar policies are created as native CFN resources."""
+        cedar_template.resource_count_is("AWS::BedrockAgentCore::Policy", 2)
+
+    def test_policy_engine_created(self, cedar_template: assertions.Template) -> None:
+        cedar_template.has_resource("AWS::BedrockAgentCore::PolicyEngine", assertions.Match.any_value())
+
+    def test_no_policies_without_cedar(self, template: assertions.Template) -> None:
+        """IAM gateway without Cedar policies still gets engine but no Policy resources."""
+        template_json = template.to_json()
+        for _lid, resource in template_json.get("Resources", {}).items():
+            assert resource.get("Type") != "AWS::BedrockAgentCore::Policy", \
+                "Should not have Policy resources without initial_cedar_policies"
+
+    def test_jwt_gateway_cedar_seeding(self) -> None:
+        """JWT gateway also supports Cedar policy seeding."""
+        app = App()
+        stack = Stack(app, "TestStack")
+        RascalBackendConstruct(
+            stack, "Rascal",
+            container_image=ecs.ContainerImage.from_registry("test/placeholder:latest"),
+            jwt_gateway=JwtGatewayConfig(
+                discovery_url="https://example.auth0.com/",
+                allowed_audiences=["my-api"],
+                initial_cedar_policies=[
+                    'permit(principal is AgentCore::OAuthUser, action, resource);',
+                ],
+            ),
+        )
+        tmpl = assertions.Template.from_stack(stack)
+        tmpl.resource_count_is("AWS::BedrockAgentCore::Policy", 1)
+        tmpl.has_resource("AWS::BedrockAgentCore::PolicyEngine", assertions.Match.any_value())
+
+
+class TestHelperFunctions:
+    def test_resource_policy_for_accounts(self) -> None:
+        policy = resource_policy_for_accounts(["111122223333"])
+        stmt = policy["Statement"][0]
+        assert stmt["Principal"]["AWS"] == "arn:aws:iam::111122223333:root"
+        assert stmt["Resource"] == "GATEWAY_ARN"
+
+    def test_resource_policy_for_accounts_multiple(self) -> None:
+        policy = resource_policy_for_accounts(["111122223333", "444455556666"])
+        assert len(policy["Statement"][0]["Principal"]["AWS"]) == 2
+
+    def test_resource_policy_for_org(self) -> None:
+        policy = resource_policy_for_org("o-abc123")
+        assert policy["Statement"][0]["Condition"]["StringEquals"]["aws:PrincipalOrgID"] == "o-abc123"
+
+    def test_resource_policy_allow_all(self) -> None:
+        assert resource_policy_allow_all()["Statement"][0]["Principal"] == "*"
+
+    def test_cedar_permit_account(self) -> None:
+        cedar = cedar_permit_account("111122223333")
+        assert "AgentCore::IamEntity" in cedar
+        assert "111122223333" in cedar
+        assert "permit(" in cedar
+        assert "resource is AgentCore::Gateway" in cedar
+        assert 'principal.id like "*:111122223333:*"' in cedar
 
 
 class TestZeroAuthInBackend:

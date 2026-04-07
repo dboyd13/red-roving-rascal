@@ -18,18 +18,10 @@ class RascalStack(Stack):
         id: str,
         *,
         container_image: ecs.ContainerImage,
-        # New API
         iam_gateway: IamGatewayConfig | None = None,
         jwt_gateway: JwtGatewayConfig | None = None,
-        # Interceptors
         request_interceptor_arn: str | None = None,
         response_interceptor_arn: str | None = None,
-        # Legacy params (backward compat)
-        allowed_account_ids: list[str] | None = None,
-        allowed_org_id: str | None = None,
-        gateway_resource_policy: dict | None = None,
-        jwt_issuer_url: str | None = None,
-        jwt_audience: list[str] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(scope, id, **kwargs)
@@ -41,10 +33,5 @@ class RascalStack(Stack):
             jwt_gateway=jwt_gateway,
             request_interceptor_arn=request_interceptor_arn,
             response_interceptor_arn=response_interceptor_arn,
-            allowed_account_ids=allowed_account_ids,
-            allowed_org_id=allowed_org_id,
-            gateway_resource_policy=gateway_resource_policy,
-            jwt_issuer_url=jwt_issuer_url,
-            jwt_audience=jwt_audience,
             removal_policy=RemovalPolicy.DESTROY,
         )
