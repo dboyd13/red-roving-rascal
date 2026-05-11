@@ -223,7 +223,14 @@ class RascalBackendConstruct(Construct):
             resources=[Fn.join("", ["arn:aws:apigateway:", stack.region, "::/restapis/", api.rest_api_id, "/*"])]))
         role.add_to_policy(iam.PolicyStatement(
             actions=["bedrock-agentcore:AuthorizeAction", "bedrock-agentcore:PartiallyAuthorizeActions",
-                     "bedrock-agentcore:GetPolicyEngine"],
+                     "bedrock-agentcore:GetPolicyEngine",
+                     # Undocumented service-internal check performed during gateway
+                     # creation when a Cedar policy engine is associated. Not in
+                     # the official required-permissions list (see
+                     # https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-permissions.html)
+                     # but AgentCore enforces it. Tracked in t.corp.amazon.com/D413393660;
+                     # remove once the docs + service align.
+                     "bedrock-agentcore:CheckAuthorizePermissions"],
             resources=["*"]))
         if interceptor_arns:
             role.add_to_policy(iam.PolicyStatement(actions=["lambda:InvokeFunction"], resources=interceptor_arns))
