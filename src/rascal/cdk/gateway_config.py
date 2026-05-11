@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Callable
 
 
 @dataclass
@@ -11,7 +12,10 @@ class IamGatewayConfig:
     Two independent knobs — compose them however you like:
 
     - ``resource_policy``: IAM resource policy controlling who can
-      *reach* the gateway (the perimeter).
+      *reach* the gateway (the perimeter). Either a ``dict`` with the
+      literal string ``"GATEWAY_ARN"`` as a placeholder (the construct
+      substitutes the real ARN at synth time) or a callable that takes
+      the resolved gateway ARN and returns the policy dict.
     - ``initial_cedar_policies``: Cedar policy texts seeded at deploy
       time controlling who gets *authorized* (the fine-grained gate).
 
@@ -36,9 +40,23 @@ class IamGatewayConfig:
                 cedar_permit_account("987654321098"),
             ],
         )
+
+        # Custom policy that needs the real ARN — use the callable form
+        # to avoid string-placeholder magic:
+        IamGatewayConfig(
+            resource_policy=lambda gw_arn: {
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Effect": "Allow",
+                    "Principal": {"AWS": "arn:aws:iam::123456789012:role/MyRole"},
+                    "Action": "bedrock-agentcore:InvokeGateway",
+                    "Resource": gw_arn,
+                }],
+            },
+        )
     """
 
-    resource_policy: dict | None = None
+    resource_policy: dict | Callable[[str], dict] | None = None
     initial_cedar_policies: list[str] | None = None
 
 
@@ -119,7 +137,9 @@ def cedar_permit_account(account_id: str) -> str:
     """Generate a Cedar permit policy for a single AWS account.
 
     Uses ``AgentCore::IamEntity`` with ``principal.id like`` pattern
-    matching on the account's IAM ARN prefix.
+    matching on the account's STS ARN prefix. Assumed roles (which is
+    what CI systems, test platforms, and SDK callers typically use)
+    present as STS ARNs, not IAM ARNs.
     """
     return (
         f'permit(\n'
@@ -128,6 +148,6 @@ def cedar_permit_account(account_id: str) -> str:
         f'  resource is AgentCore::Gateway\n'
         f')\n'
         f'when {{\n'
-        f'  principal.id like "*:{account_id}:*"\n'
+        f'  principal.id like "arn:aws:sts::{account_id}:*"\n'
         f'}};'
     )

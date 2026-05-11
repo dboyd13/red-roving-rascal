@@ -351,10 +351,17 @@ class RascalBackendConstruct(Construct):
 
         # --- Resource policy (IAM gateway only) ---
         if iam_config is not None and iam_config.resource_policy is not None:
-            policy_doc = json.loads(json.dumps(iam_config.resource_policy))
-            for stmt in policy_doc.get("Statement", []):
-                if stmt.get("Resource") == "GATEWAY_ARN":
-                    stmt["Resource"] = gw.attr_gateway_arn
+            rp = iam_config.resource_policy
+            if callable(rp):
+                # Callable form: invoke with the resolved gateway ARN.
+                policy_doc = rp(gw.attr_gateway_arn)
+            else:
+                # Dict form: deep-copy then substitute the "GATEWAY_ARN"
+                # string placeholder with the resolved gateway ARN.
+                policy_doc = json.loads(json.dumps(rp))
+                for stmt in policy_doc.get("Statement", []):
+                    if stmt.get("Resource") == "GATEWAY_ARN":
+                        stmt["Resource"] = gw.attr_gateway_arn
             self._apply_resource_policy(prefix=p, gateway=gw, policy_doc=policy_doc)
 
         CfnOutput(self, f"AgentCore{lbl}GatewayId", value=gw.attr_gateway_identifier)

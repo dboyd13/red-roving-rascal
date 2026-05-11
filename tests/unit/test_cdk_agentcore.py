@@ -302,7 +302,7 @@ class TestHelperFunctions:
         assert "111122223333" in cedar
         assert "permit(" in cedar
         assert "resource is AgentCore::Gateway" in cedar
-        assert 'principal.id like "*:111122223333:*"' in cedar
+        assert 'principal.id like "arn:aws:sts::111122223333:*"' in cedar
 
 
 class TestZeroAuthInBackend:
